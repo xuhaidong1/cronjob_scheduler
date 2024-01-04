@@ -19,3 +19,17 @@
 
 # Go workspace file
 go.work
+
+
+.idea
+default.log
+bin
+bin.tar.gz
+etc.tar.gz
+logs
+compile_out
+# Dependency directories (remove the comment below to include it)
+.vscode/
+**/.DS_Store
+test.db
+go.work.sum
