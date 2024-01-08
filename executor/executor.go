@@ -11,6 +11,7 @@ type Executor interface {
 	Name() ExecutorType
 	// Exec 真正的执行任务，当ctx.Done时，任务执行会被中断
 	Exec(ctx context.Context, j domain.Job) error
+	RegisterRunner(name string, r any)
 }
 
 type ExecutorType string

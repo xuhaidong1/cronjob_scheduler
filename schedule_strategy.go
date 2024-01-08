@@ -1,4 +1,4 @@
-package strategy
+package cronjob_scheduler
 
 import (
 	"github.com/xuhaidong1/cronjob_scheduler/domain"
@@ -13,6 +13,10 @@ type ScheduleStrategy interface {
 type LongPreemptStrategy struct {
 }
 
+func NewLongPreemptStrategy() ScheduleStrategy {
+	return &LongPreemptStrategy{}
+}
+
 func (s LongPreemptStrategy) Next(j domain.Job) (time.Duration, bool) {
 	next := j.NextTime()
 	if next.IsZero() {
@@ -25,13 +29,10 @@ func (s LongPreemptStrategy) Next(j domain.Job) (time.Duration, bool) {
 type OncePreemptStrategy struct {
 }
 
+func NewOncePreemptStrategy() ScheduleStrategy {
+	return &OncePreemptStrategy{}
+}
+
 func (s OncePreemptStrategy) Next(j domain.Job) (time.Duration, bool) {
 	return 0, false
 }
-
-//type ScheduleStrategyType string
-//
-//const (
-//	LongPreemptStrategyType ScheduleStrategyType = "long"
-//	OncePreemptStrategyType ScheduleStrategyType = "once"
-//)

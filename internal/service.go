@@ -8,9 +8,11 @@ import (
 )
 
 type JobService interface {
-	Preempt(ctx context.Context) (domain.Job, error)
+	Preempt(ctx context.Context, scrName string) (domain.Job, error)
 	SetNextTime(ctx context.Context, j domain.Job) error
 	Release(ctx context.Context, j domain.Job) error
+	Register(ctx context.Context, j domain.Job) error
+	UnRegister(ctx context.Context, name string) error
 	Stop(ctx context.Context, id int64) error
 }
 
@@ -18,6 +20,14 @@ type cronJobService struct {
 	repo            JobRepository
 	refreshInterval time.Duration
 	l               logx.Logger
+}
+
+func (s *cronJobService) Register(ctx context.Context, j domain.Job) error {
+	return s.repo.Create(ctx, j)
+}
+
+func (s *cronJobService) UnRegister(ctx context.Context, name string) error {
+	return s.repo.Delete(ctx, name)
 }
 
 func (s *cronJobService) Release(ctx context.Context, j domain.Job) error {
@@ -28,30 +38,37 @@ func (s *cronJobService) Stop(ctx context.Context, id int64) error {
 	return s.repo.Stop(ctx, id)
 }
 
-func (s *cronJobService) Preempt(ctx context.Context) (domain.Job, error) {
-	j, err := s.repo.Preempt(ctx)
+func (s *cronJobService) Preempt(ctx context.Context, scrName string) (domain.Job, error) {
+	j, err := s.repo.Preempt(ctx, scrName)
 	if err != nil {
 		return domain.Job{}, err
 	}
 	ticker := time.NewTicker(s.refreshInterval)
 	// 抢占之后，一直抢占着吗？
 	// 考虑一个释放的问题:续约失败释放 & 任务完成释放
+	refreshCtx, refreshCancel := context.WithCancel(ctx)
 	j.CancelFunc = func() error {
 		ticker.Stop()
+		refreshCancel()
 		ct, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		return s.repo.Release(ct, j)
 	}
 	//续约
 	go func() {
-		for range ticker.C {
-			er := s.refresh(j.Id)
-			if er != nil {
-				s.l.Error("续约失败", logx.Int64("id", j.Id), logx.Error(er))
-				e := j.CancelFunc()
-				if e != nil {
-					s.l.Error("续约释放失败", logx.Int64("id", j.Id), logx.Error(e))
+		for {
+			select {
+			case <-ticker.C:
+				er := s.refresh(j.Id)
+				if er != nil {
+					s.l.Error("续约失败", logx.Int64("id", j.Id), logx.Error(er))
+					e := j.CancelFunc()
+					if e != nil {
+						s.l.Error("续约释放失败", logx.Int64("id", j.Id), logx.Error(e))
+					}
+					return
 				}
+			case <-refreshCtx.Done():
 				return
 			}
 		}

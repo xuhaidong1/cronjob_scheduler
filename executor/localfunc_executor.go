@@ -18,7 +18,8 @@ func (l *LocalFuncExecutor) Name() ExecutorType {
 	return ExecutorTypeLocalFunc
 }
 
-func (l *LocalFuncExecutor) RegisterFunc(name string, f Func) {
+func (l *LocalFuncExecutor) RegisterRunner(name string, r any) {
+	f := r.(Func)
 	l.funcs[name] = f
 }
 

@@ -18,6 +18,15 @@ type HttpConfig struct {
 type HttpExecutor struct {
 }
 
+func (h *HttpExecutor) RegisterRunner(name string, r any) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func NewHttpExecutor() *HttpExecutor {
+	return &HttpExecutor{}
+}
+
 func (h *HttpExecutor) Name() ExecutorType {
 	return ExecutorTypeHttp
 }

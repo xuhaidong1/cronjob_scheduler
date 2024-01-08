@@ -28,12 +28,3 @@ func (j Job) NextTime() time.Time {
 	s, _ := parser.Parse(j.Cron)
 	return s.Next(time.Now())
 }
-
-// MutexJob 节点互斥任务，在定时任务调度过程中，同一时刻只有一个节点执行这个任务
-type MutexJob struct {
-}
-
-// PreemptiveJob 可抢占的节点互斥任务，在定时任务调度过程中，同一时刻只有一个节点执行这个任务，
-// 但若执行任务的节点挂了/续约失败/权重比候选节点小，该任务可以被其它节点抢占
-type PreemptiveJob struct {
-}
