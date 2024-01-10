@@ -9,15 +9,15 @@ type ScheduleStrategy interface {
 	Next(j domain.Job) (time.Duration, bool)
 }
 
-// LongPreemptStrategy 长期抢占,抢到了任务就不释放，除非自身续约失败/负载较高被其它实例剥夺任务
-type LongPreemptStrategy struct {
+// LongScheduleStrategy 长期抢占,抢到了任务就不释放，除非自身续约失败/负载较高被其它实例剥夺任务
+type LongScheduleStrategy struct {
 }
 
-func NewLongPreemptStrategy() ScheduleStrategy {
-	return &LongPreemptStrategy{}
+func NewLongScheduleStrategy() ScheduleStrategy {
+	return &LongScheduleStrategy{}
 }
 
-func (s LongPreemptStrategy) Next(j domain.Job) (time.Duration, bool) {
+func (s LongScheduleStrategy) Next(j domain.Job) (time.Duration, bool) {
 	next := j.NextTime()
 	if next.IsZero() {
 		return 0, false
@@ -25,14 +25,14 @@ func (s LongPreemptStrategy) Next(j domain.Job) (time.Duration, bool) {
 	return next.Sub(time.Now()), true
 }
 
-// OncePreemptStrategy 抢到了任务只执行一次，执行完之后就释放任务
-type OncePreemptStrategy struct {
+// OnceScheduleStrategy 抢到了任务只执行一次，执行完之后就释放任务
+type OnceScheduleStrategy struct {
 }
 
-func NewOncePreemptStrategy() ScheduleStrategy {
-	return &OncePreemptStrategy{}
+func NewOnceScheduleStrategy() ScheduleStrategy {
+	return &OnceScheduleStrategy{}
 }
 
-func (s OncePreemptStrategy) Next(j domain.Job) (time.Duration, bool) {
+func (s OnceScheduleStrategy) Next(j domain.Job) (time.Duration, bool) {
 	return 0, false
 }

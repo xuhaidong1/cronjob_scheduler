@@ -10,14 +10,16 @@ type Job struct {
 	Name string
 	//执行的超时时间
 	Timeout time.Duration
-	Cron    string
+	//job的权重，被调度时，scheduler会增加weight的负载，完成后减少负载
+	Weight int64
+	//job的cron表达式
+	Cron string
 	//执行流水版本号，用于乐观锁控制
 	Version int64
 	//执行器名字
 	Executor string
 	// 不知道配置具体细节，所以就搞一个通用的配置抽象
-	Config     string
-	CancelFunc func() error
+	Config string
 }
 
 var parser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom |

@@ -3,13 +3,13 @@ package cronjob_scheduler
 type ScheduleStrategyType string
 
 const (
-	LongPreemptStrategyType ScheduleStrategyType = "long"
-	OncePreemptStrategyType ScheduleStrategyType = "once"
+	LongScheduleType ScheduleStrategyType = "long"
+	OnceScheduleType ScheduleStrategyType = "once"
 )
 
 type PreemptStrategyType string
 
 const (
-	TimeoutPreemptStrategyType PreemptStrategyType = "timeout"
-	LoadBalancerStrategyType   PreemptStrategyType = "loadbalancer"
+	TimeoutPreemptType      PreemptStrategyType = "timeout"
+	LoadBalancerPreemptType PreemptStrategyType = "loadbalancer"
 )
