@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"github.com/robfig/cron/v3"
 	"time"
 )
@@ -20,6 +21,7 @@ type Job struct {
 	Executor string
 	// 不知道配置具体细节，所以就搞一个通用的配置抽象
 	Config string
+	Cancel context.CancelFunc
 }
 
 var parser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom |

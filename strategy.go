@@ -7,9 +7,7 @@ const (
 	OnceScheduleType ScheduleStrategyType = "once"
 )
 
-type PreemptStrategyType string
-
 const (
-	TimeoutPreemptType      PreemptStrategyType = "timeout"
-	LoadBalancerPreemptType PreemptStrategyType = "loadbalancer"
+	TimeoutPreemptType      string = "timeout"
+	LoadBalancerPreemptType string = "loadbalancer"
 )

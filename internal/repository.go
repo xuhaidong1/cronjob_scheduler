@@ -18,10 +18,16 @@ type JobRepository interface {
 	Start(ctx context.Context, id int64) error
 	RegisterScheduler(ctx context.Context, scrName string) error
 	SetLoad(ctx context.Context, scrName string, load int64) error
+	SetDowngrade(ctx context.Context, scrName string, dg bool) error
+	GetAllScrLoads(ctx context.Context) ([]int64, error)
 }
 
 type CronJobRepository struct {
 	dao JobDAO
+}
+
+func (p *CronJobRepository) SetDowngrade(ctx context.Context, scrName string, dg bool) error {
+	return p.dao.SetDowngrade(ctx, scrName, dg)
 }
 
 func (p *CronJobRepository) UpdateScrUtime(ctx context.Context, name string) error {
@@ -72,6 +78,10 @@ func (p *CronJobRepository) UpdateNextTime(ctx context.Context, id int64, next t
 
 func (p *CronJobRepository) Release(ctx context.Context, id int64, selfScrName string) error {
 	return p.dao.Release(ctx, id, selfScrName)
+}
+
+func (g *CronJobRepository) GetAllScrLoads(ctx context.Context) ([]int64, error) {
+	return g.dao.GetAllScrLoads(ctx)
 }
 
 func (p *CronJobRepository) Preempt(ctx context.Context, scrName string) (domain.Job, error) {

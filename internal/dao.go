@@ -9,8 +9,6 @@ import (
 )
 
 var ReleaseErr = errors.New("释放任务失败")
-var HasCandidate = errors.New("有候选了，需要让出job")
-var RefreshFailed = errors.New("续约失败，dao")
 var ErrNoAvailableScr = errors.New("没有可用的SCR")
 var ErrNoAvailableJob = errors.New("没有可用的Job")
 
@@ -33,6 +31,8 @@ type JobDAO interface {
 	RegisterScheduler(ctx context.Context, scrName string) error
 	SetLoad(ctx context.Context, scrName string, load int64) error
 	UpdateScrUtime(ctx context.Context, name string) error
+	SetDowngrade(ctx context.Context, scrName string, dg bool) error
+	GetAllScrLoads(ctx context.Context) ([]int64, error)
 }
 
 type GORMJobDAO struct {
@@ -143,13 +143,12 @@ func (g *GORMJobDAO) Preempt(ctx context.Context, scrName string) (Job, error) {
 			"status":    JobStatusRunning,
 			"utime":     time.Now().UnixMilli(),
 			"scheduler": scrName,
-			"candidate": "",
 			"version":   j.Version + 1,
 		})
 	//defer func() {
 	//	//看有没有高负载的scheduler，有的话就把自己加入job候选，下一轮就可能抢占到任务了
 	//	//如果此轮抢到了job，还是用0负载来判断就不科学了，所以加上抢占的结果job的权重，如果没有抢到，加的weight是0值
-	//	rowsAffected := db.Where("scheduler_load > ? AND status = ? AND candidate = ? AND scheduler <> ?", selfLoad+p.threshold+j.Weight, JobStatusRunning, "", selfScrName).
+	//	rowsAffected := db.Where("scheduler_load > ? AND status = ? AND candidate = ? AND scheduler <> ?", selfLoad+p.Threshold+j.Weight, JobStatusRunning, "", selfScrName).
 	//		Order("scheduler_load DESC").First(&j).
 	//		Updates(map[string]any{
 	//			"candidate": scrName,
@@ -213,6 +212,24 @@ func (g *GORMJobDAO) SetLoad(ctx context.Context, scrName string, load int64) er
 	return nil
 }
 
+func (g *GORMJobDAO) GetAllScrLoads(ctx context.Context) ([]int64, error) {
+	var loads []int64
+	err := g.db.WithContext(ctx).Model(&Scheduler{}).Select("s_load").Where("downgrade = ?", false).Find(&loads).Error
+	return loads, err
+}
+
+func (g *GORMJobDAO) SetDowngrade(ctx context.Context, scrName string, dg bool) error {
+	rf := g.db.WithContext(ctx).Model(&Scheduler{}).Where("name = ?", scrName).Updates(map[string]any{
+		"downgrade": dg,
+		"utime":     time.Now().UnixMilli(),
+	})
+	if rf.RowsAffected == 0 {
+		log.Println("设置降级异常", scrName, rf.Error)
+		return errors.New("设置降级异常")
+	}
+	return nil
+}
+
 type Job struct {
 	Id       int64  `gorm:"primaryKey,autoIncrement"`
 	Name     string `gorm:"unique"`
@@ -234,12 +251,8 @@ type Job struct {
 	// cron 表达式
 	Cron string
 	//乐观锁版本
-	Version int64
-	//负载均衡用到的3个字段
+	Version   int64
 	Scheduler string `gorm:"type=varchar(128);not null;"`
-	Candidate string `gorm:"type=varchar(128);not null;"`
-	//历史候选，当抢占任务时，优先抢占被负载均衡算法分配到过的任务，防止再次发生不必要的负载均衡，因为定时任务变化不是那么频繁
-	CandidateHistory string `gorm:"type=varchar(128);not null;"`
 	// 创建时间，毫秒数
 	Ctime int64
 	// 更新时间，毫秒数
@@ -247,9 +260,10 @@ type Job struct {
 }
 
 type Scheduler struct {
-	Id    int64  `gorm:"primaryKey,autoIncrement"`
-	Name  string `gorm:"type=varchar(128);not null;unique"`
-	SLoad int64  `gorm:"not null;default:0;index:utime_load,1"`
+	Id        int64  `gorm:"primaryKey,autoIncrement"`
+	Name      string `gorm:"type=varchar(128);not null;unique"`
+	SLoad     int64  `gorm:"not null;default:0;index:utime_load,1"`
+	Downgrade bool   `gorm:"not null;default:false"`
 	// 创建时间，毫秒数
 	Ctime int64
 	// 更新时间，毫秒数
