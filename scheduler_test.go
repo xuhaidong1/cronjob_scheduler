@@ -60,7 +60,7 @@ func AddJob(scr *Scheduler) {
 
 func registerForTest(scr *Scheduler) {
 	for i := 1; i < 30; i++ {
-		scr.RegisterJob("testjob"+strconv.Itoa(i), f)
+		scr.RegisterJobFunc("testjob"+strconv.Itoa(i), f)
 	}
 }
 

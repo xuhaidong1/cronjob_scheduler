@@ -82,7 +82,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}()
 }
 
-func (s *Scheduler) RegisterJob(name string, f func(context.Context) error) {
+func (s *Scheduler) RegisterJobFunc(name string, f func(context.Context) error) {
 	s.execs[executor.ExecutorTypeLocalFunc].RegisterRunner(name, s.JobWrapper(f))
 }
 
