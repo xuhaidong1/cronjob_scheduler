@@ -4,9 +4,11 @@
 ```shell
 go install "github.com/xuhaidong1/cronjob_scheduler"
 ```
-入门使用
+## 入门使用
 
 默认配置：普通调度策略 & 任务短持有策略 & 全部释放的降级释放任务策略
+
+tips: 调度方式 & 任务持有方式 & 降级策略可以自由组合配置
 ```go
 package example
 import (
