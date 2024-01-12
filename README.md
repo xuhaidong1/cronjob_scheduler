@@ -72,8 +72,8 @@ cronjob_scheduler提供了任务的长持有和短持有策略；默认为短持
 
 ## 限制最多并发持有的任务数
 ```go
-    //指定持有的最多任务数量，如果达到了数量，发起抢占前会被阻塞
-    scr := cs.NewScheduler(db, cs.WithMaxConcurrentPreemptNum(100))
+    //指定持有的最多任务数量，如果达到了数量，发起抢占前会被阻塞;默认为100
+    scr := cs.NewScheduler(db, cs.WithMaxConcurrentPreemptNum(1000))
 ```
 
 
