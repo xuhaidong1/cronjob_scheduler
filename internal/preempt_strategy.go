@@ -65,16 +65,15 @@ func (p *LoadBalancerStrategy) GetJob(ctx context.Context, selfScrName string) (
 	now := time.Now()
 	db := p.db.WithContext(ctx)
 	var j Job
-	//先看看候选人是自己的job有没有被释放，如果被释放了，就抢占//release时记得删除候选者
-	//err := db.Where("candidate = ? AND status = ? AND next_time <= ?", selfScrName, JobStatusWaiting, now.UnixMilli()).
-	//	Order("weight ASC").Order("Timeout ASC").First(&j).Error
-	//if err == nil {
-	//	log.Println(selfScrName, "抢到了高负载scr的job", j)
-	//	return j, err
-	//}
-
+	//先看看有没有候选人是自己的job，有的话说明有人负载过高，需要移交job给自己
+	err := db.Where("status = ? AND next_time <= ? AND candidate = ?", JobStatusWaiting, now.UnixMilli(), selfScrName).
+		Order("weight ASC").Order("Timeout ASC").First(&j).Error
+	if err == nil {
+		log.Println(selfScrName, "抢到了高负载scr的job", j)
+		return j, err
+	}
 	//再看有没有续约失败的任务
-	err := db.Where("status = ? AND utime <=?", JobStatusRunning, now.Add(-p.Timeout).UnixMilli()).
+	err = db.Where("status = ? AND utime <=?", JobStatusRunning, now.Add(-p.Timeout).UnixMilli()).
 		First(&j).Error
 	if err == nil {
 		log.Println(selfScrName, "抢到了续约失败scr的job", j.Name)
@@ -93,7 +92,7 @@ func (p *LoadBalancerStrategy) GetJob(ctx context.Context, selfScrName string) (
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return Job{}, err
 	}
-	err = db.Where("status = ? AND next_time <=?", JobStatusWaiting, now.UnixMilli()).
+	err = db.Where("status = ? AND next_time <= ? AND candidate = ?", JobStatusWaiting, now.UnixMilli(), "").
 		First(&j).Error
 	if err == nil {
 		if s.Name != selfScrName {

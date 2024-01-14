@@ -11,6 +11,8 @@ type JobRepository interface {
 	Release(ctx context.Context, id int64, selfScrName string) error
 	Create(ctx context.Context, j domain.Job) error
 	Delete(ctx context.Context, name string) error
+	UpdateStatus(ctx context.Context, id int64, status int, scrName string) error
+	UpdateCandidate(ctx context.Context, id int64, candi string) error
 	UpdateUtime(ctx context.Context, id int64) error
 	UpdateScrUtime(ctx context.Context, name string) error
 	UpdateNextTime(ctx context.Context, id int64, next time.Time) error
@@ -19,11 +21,24 @@ type JobRepository interface {
 	RegisterScheduler(ctx context.Context, scrName string) error
 	SetLoad(ctx context.Context, scrName string, load int64) error
 	SetDowngrade(ctx context.Context, scrName string, dg bool) error
-	GetAllScrLoads(ctx context.Context) ([]int64, error)
+	GetAllScrLoads(ctx context.Context) ([]Scheduler, error)
+	GetJobInfo(ctx context.Context, id int64) (Job, error)
 }
 
 type CronJobRepository struct {
 	dao JobDAO
+}
+
+func (p *CronJobRepository) GetJobInfo(ctx context.Context, id int64) (Job, error) {
+	return p.dao.GetJobInfo(ctx, id)
+}
+
+func (p *CronJobRepository) UpdateCandidate(ctx context.Context, id int64, candi string) error {
+	return p.dao.UpdateCandidate(ctx, id, candi)
+}
+
+func (p *CronJobRepository) UpdateStatus(ctx context.Context, id int64, status int, scrName string) error {
+	return p.dao.UpdateStatus(ctx, id, status, scrName)
 }
 
 func (p *CronJobRepository) SetDowngrade(ctx context.Context, scrName string, dg bool) error {
@@ -80,7 +95,7 @@ func (p *CronJobRepository) Release(ctx context.Context, id int64, selfScrName s
 	return p.dao.Release(ctx, id, selfScrName)
 }
 
-func (g *CronJobRepository) GetAllScrLoads(ctx context.Context) ([]int64, error) {
+func (g *CronJobRepository) GetAllScrLoads(ctx context.Context) ([]Scheduler, error) {
 	return g.dao.GetAllScrLoads(ctx)
 }
 

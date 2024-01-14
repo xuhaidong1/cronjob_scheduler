@@ -25,8 +25,10 @@ func TestScheduler_Schedule(t *testing.T) {
 	//scr3 := NewScheduler(db, WithLongScheduleStrategy())
 	var scrs = make([]*Scheduler, 5)
 	for i := 0; i < len(scrs); i++ {
-		scrs[i] = NewScheduler(db, WithLongScheduleStrategy())
-		//scrs[i] = NewScheduler(db, WithLoadBalancePreemptStrategy(), WithLongScheduleStrategy(), WithLimitLoadDownGradeStrategy(150, HighWeightFirst))
+		//scrs[i] = NewScheduler(db, WithLongScheduleStrategy())
+		scrs[i] = NewScheduler(db, WithLoadBalancePreemptStrategy(),
+			WithLongScheduleStrategy(), WithLimitLoadDownGradeStrategy(150, HighWeightFirst),
+			WithStrictReBalanceStrategy())
 	}
 	for i := 0; i < len(scrs); i++ {
 		registerForTest(scrs[i])
@@ -42,7 +44,7 @@ func TestScheduler_Schedule(t *testing.T) {
 		scrs[1].SetDownGrade(true)
 		scrs[2].SetDownGrade(true)
 		scrs[3].SetDownGrade(true)
-		time.Sleep(time.Second * 60)
+		time.Sleep(time.Second * 10)
 		scrs[1].SetDownGrade(false)
 		scrs[2].SetDownGrade(false)
 		scrs[3].SetDownGrade(false)

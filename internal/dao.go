@@ -21,6 +21,9 @@ type JobDAO interface {
 	Create(ctx context.Context, j Job) error
 	// Delete unregister时用
 	Delete(ctx context.Context, name string) error
+	GetJobInfo(ctx context.Context, id int64) (Job, error)
+	UpdateStatus(ctx context.Context, id int64, status int, scrName string) error
+	UpdateCandidate(ctx context.Context, id int64, candi string) error
 	// UpdateUtime 通过更新Utime来续约
 	UpdateUtime(ctx context.Context, id int64) error
 	// UpdateNextTime job完成之后更新下次调度时间
@@ -32,12 +35,25 @@ type JobDAO interface {
 	SetLoad(ctx context.Context, scrName string, load int64) error
 	UpdateScrUtime(ctx context.Context, name string) error
 	SetDowngrade(ctx context.Context, scrName string, dg bool) error
-	GetAllScrLoads(ctx context.Context) ([]int64, error)
+	GetAllScrLoads(ctx context.Context) ([]Scheduler, error)
 }
 
 type GORMJobDAO struct {
 	db        *gorm.DB
 	preemptSg PreemptStrategy
+}
+
+func (g *GORMJobDAO) GetJobInfo(ctx context.Context, id int64) (Job, error) {
+	var j = Job{Id: id}
+	err := g.db.WithContext(ctx).First(&j).Error
+	return j, err
+}
+
+func (g *GORMJobDAO) UpdateCandidate(ctx context.Context, id int64, candi string) error {
+	return g.db.WithContext(ctx).Model(&Job{}).Where("id = ?", id).Updates(map[string]any{
+		"candidate": candi,
+		"utime":     time.Now().UnixMilli(),
+	}).Error
 }
 
 func NewGORMJobDAO(db *gorm.DB, preemptSg PreemptStrategy) JobDAO {
@@ -63,30 +79,13 @@ func (g *GORMJobDAO) UpdateUtime(ctx context.Context, id int64) error {
 	}).Error
 }
 
-//func (g *GORMJobDAO) UpdateSchedulerLoad(ctx context.Context, id, load int64, scrName string) error {
-//	var count int64
-//	err := g.db.WithContext(ctx).Model(&Job{}).
-//		Where("id = ? AND scheduler = ? AND candidate <> ? ", id, scrName, "").Count(&count).Error
-//	if err != nil {
-//		return err
-//	}
-//	if count != 0 {
-//		return HasCandidate
-//	}
-//	res := g.db.WithContext(ctx).Model(&Job{}).
-//		Where("id = ? AND scheduler = ?", id, scrName).Updates(map[string]any{
-//		"scheduler_load": load,
-//		"utime":          time.Now().UnixMilli(),
-//	})
-//	if res.Error != nil {
-//		return res.Error
-//	}
-//	if res.RowsAffected == 0 {
-//		return RefreshFailed
-//	}
-//	log.Println("续约成功", scrName, id)
-//	return nil
-//}
+func (g *GORMJobDAO) UpdateStatus(ctx context.Context, id int64, status int, scrName string) error {
+	return g.db.WithContext(ctx).Model(&Job{}).
+		Where("id = ?", id).Updates(map[string]any{
+		"status": status,
+		"utime":  time.Now().UnixMilli(),
+	}).Error
+}
 
 func (g *GORMJobDAO) UpdateNextTime(ctx context.Context, id int64, next time.Time) error {
 	return g.db.WithContext(ctx).Model(&Job{}).
@@ -113,11 +112,10 @@ func (g *GORMJobDAO) Start(ctx context.Context, id int64) error {
 }
 
 func (g *GORMJobDAO) Release(ctx context.Context, id int64, selfScrName string) error {
-	res := g.db.WithContext(ctx).Model(&Job{}).Where("id =? AND status = ? AND scheduler = ?", id, JobStatusRunning, selfScrName).
+	res := g.db.WithContext(ctx).Model(&Job{}).Where("id =? AND scheduler = ?", id, selfScrName).
 		Updates(map[string]any{
 			"status":    JobStatusWaiting,
 			"scheduler": "",
-			"utime":     time.Now().UnixMilli(),
 		})
 	if res.RowsAffected == 0 {
 		return ReleaseErr
@@ -143,22 +141,9 @@ func (g *GORMJobDAO) Preempt(ctx context.Context, scrName string) (Job, error) {
 			"status":    JobStatusRunning,
 			"utime":     time.Now().UnixMilli(),
 			"scheduler": scrName,
+			"candidate": "",
 			"version":   j.Version + 1,
 		})
-	//defer func() {
-	//	//看有没有高负载的scheduler，有的话就把自己加入job候选，下一轮就可能抢占到任务了
-	//	//如果此轮抢到了job，还是用0负载来判断就不科学了，所以加上抢占的结果job的权重，如果没有抢到，加的weight是0值
-	//	rowsAffected := db.Where("scheduler_load > ? AND status = ? AND candidate = ? AND scheduler <> ?", selfLoad+p.Threshold+j.Weight, JobStatusRunning, "", selfScrName).
-	//		Order("scheduler_load DESC").First(&j).
-	//		Updates(map[string]any{
-	//			"candidate": scrName,
-	//			//发生了新的负载均衡，历史就不具备参考意义了；
-	//			"candidate_history": "",
-	//		}).RowsAffected
-	//	if rowsAffected != 0 {
-	//		log.Println(scrName, "加入了候选", j.Name)
-	//	}
-	//}()
 	if res.Error != nil {
 		return Job{}, err
 	}
@@ -168,14 +153,6 @@ func (g *GORMJobDAO) Preempt(ctx context.Context, scrName string) (Job, error) {
 	}
 	//拿到了任务，数据库里面这个job的version已经被+1,这里对象也要+1
 	j.Version = j.Version + 1
-	//如果是从高负载任务那里抢到的，那么记录到负载均衡历史里面，下次优先从历史抢占任务，防止重复负载均衡
-	//if j.Candidate == scrName {
-	//	er := db.Where("id=? AND version = ?", j.Id, j.Version).Model(&Job{}).
-	//		Updates(map[string]any{"candidate_history": scrName}).Error
-	//	if er != nil {
-	//		log.Println("更新历史候选失败", j)
-	//	}
-	//}
 	return j, nil
 }
 
@@ -212,10 +189,10 @@ func (g *GORMJobDAO) SetLoad(ctx context.Context, scrName string, load int64) er
 	return nil
 }
 
-func (g *GORMJobDAO) GetAllScrLoads(ctx context.Context) ([]int64, error) {
-	var loads []int64
-	err := g.db.WithContext(ctx).Model(&Scheduler{}).Select("s_load").Where("downgrade = ?", false).Find(&loads).Error
-	return loads, err
+func (g *GORMJobDAO) GetAllScrLoads(ctx context.Context) ([]Scheduler, error) {
+	var scrs []Scheduler
+	err := g.db.WithContext(ctx).Model(&Scheduler{}).Where("downgrade = ?", false).Find(&scrs).Error
+	return scrs, err
 }
 
 func (g *GORMJobDAO) SetDowngrade(ctx context.Context, scrName string, dg bool) error {
@@ -253,6 +230,7 @@ type Job struct {
 	//乐观锁版本
 	Version   int64
 	Scheduler string `gorm:"type=varchar(128);not null;"`
+	Candidate string `gorm:"type=varchar(128);not null;"`
 	// 创建时间，毫秒数
 	Ctime int64
 	// 更新时间，毫秒数
@@ -274,6 +252,10 @@ const (
 	JobStatusWaiting = iota
 	// JobStatusRunning 已经被抢占
 	JobStatusRunning
+	// JobStatusOccupied 被长抢占所占有
+	JobStatusOccupied
+	// JobStatusToHandOver 调度者负载过高，希望交接job给指定候选者
+	JobStatusToHandOver
 	// JobStatusPaused 暂停调度
 	JobStatusPaused
 )

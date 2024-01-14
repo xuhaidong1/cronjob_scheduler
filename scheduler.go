@@ -34,6 +34,8 @@ type SchedulerConfig struct {
 	PreemptSg internal.PreemptStrategy
 	// 降级下的执行策略：全部让出任务/保留部分的任务（限制总负载）/保留白名单任务
 	DownGradeSg DownGradeStrategy
+	// 负载再均衡策略，宽松策略和严苛策略，默认为宽松策略
+	ReBalanceSg ReBalanceStrategy
 	//降级情况下，限制的负载总和最大值,未指定默认为0
 	Threshold int64
 	Logger    logx.Logger
@@ -47,6 +49,7 @@ func NewScheduler(db *gorm.DB, opts ...ScheduleOption) *Scheduler {
 	sc.ScheduleSg = NewOnceScheduleStrategy()
 	sc.PreemptSg = internal.NewTimeoutPreemptStrategy(db, sc.TimeoutInterval)
 	sc.DownGradeSg = NewRunNoJobStrategy()
+	sc.ReBalanceSg = RelaxReBalanceStrategy
 	//由于希望按顺序调用option函数，比如负载均衡抢占策略需要用到超时时间，如果用户指定了超时时间
 	//那么这个超时时间同样也要再负载均衡抢占策略中初始化好。
 	sort.Slice(opts, func(i, j int) bool {
@@ -57,7 +60,7 @@ func NewScheduler(db *gorm.DB, opts ...ScheduleOption) *Scheduler {
 	}
 	dao := internal.NewGORMJobDAO(db, sc.PreemptSg)
 	repo := internal.NewCronJobRepository(dao)
-	svc := internal.NewCronJobService(repo, sc.Logger)
+	svc := internal.NewCronJobService(repo, sc.Logger, internal.ReBalanceStrategy(sc.ReBalanceSg))
 	scr := newScheduler(svc, sc)
 	scr.RegisterExecutor(executor.NewLocalFuncExecutor())
 	scr.RegisterExecutor(executor.NewHttpExecutor())
@@ -161,6 +164,16 @@ func WithLoadBalancePreemptStrategy() ScheduleOption {
 	}
 }
 
+func WithStrictReBalanceStrategy() ScheduleOption {
+	return ScheduleOption{
+		Idx: 6,
+		F: func(c *SchedulerConfig) {
+			//访问c.DB的前提是c.DB是非空的
+			c.ReBalanceSg = StrictReBalanceStrategy
+		},
+	}
+}
+
 // Scheduler 调度器
 type Scheduler struct {
 	Name        string
@@ -246,6 +259,13 @@ func (s *Scheduler) Schedule(ctx context.Context) error {
 			// 接下来就是执行
 			// 怎么执行？--异步执行，不要阻塞主调度循环
 			go s.ScheduleJob(ctx, job)
+		case j := <-s.svc.ReBalanceFailedJob():
+			_ = s.svc.UpdateStatus(ctx, j.Id, internal.JobStatusRunning, s.Name)
+			err := s.limiter.Acquire(ctx, 1)
+			if err != nil {
+				return err
+			}
+			go s.ScheduleJob(ctx, j)
 		}
 	}
 }
@@ -257,6 +277,10 @@ func (s *Scheduler) ScheduleJob(ctx context.Context, j domain.Job) {
 	go func() {
 		er := s.Refresh(refreshCtx, j)
 		if er != nil {
+			if errors.Is(er, internal.ErrSelfLoadTooHigh) {
+				s.l.Info("负载过高，准备释放任务", logx.String("scr", s.Name),
+					logx.String("job", j.Name), logx.Int64("load", s.GetLoad()))
+			}
 			refreshCancel()
 		}
 	}()
@@ -286,6 +310,7 @@ func (s *Scheduler) ScheduleJob(ctx context.Context, j domain.Job) {
 	}
 
 	for {
+		//_ = s.svc.UpdateStatus(ctx, j.Id, internal.JobStatusRunning)
 		// 考虑任务的超时控制
 		ctx1, cancel1 := context.WithTimeout(ctx, j.Timeout)
 		err1 := exec.Exec(ctx1, j)
@@ -306,6 +331,7 @@ func (s *Scheduler) ScheduleJob(ctx context.Context, j domain.Job) {
 		if !hasNext {
 			return
 		}
+		//_ = s.svc.UpdateStatus(ctx, j.Id, internal.JobStatusOccupied)
 		select {
 		case <-refreshCtx.Done():
 			return
@@ -349,9 +375,9 @@ func (s *Scheduler) Refresh(ctx context.Context, j domain.Job) error {
 			var er error
 			switch s.PreemptSg.Name() {
 			case LoadBalancerPreemptType:
-				er = s.svc.Refresh(j.Id, s.GetLoad())
+				er = s.svc.Refresh(j, s.GetLoad())
 			case TimeoutPreemptType:
-				er = s.svc.Refresh(j.Id)
+				er = s.svc.Refresh(j)
 			}
 			if er != nil {
 				if errors.Is(er, internal.ErrSelfLoadTooHigh) {
