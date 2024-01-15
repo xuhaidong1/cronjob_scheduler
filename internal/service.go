@@ -35,6 +35,7 @@ type cronJobService struct {
 	l                  logx.Logger
 	rb                 ReBalanceStrategy
 	reBalanceFailedJob chan domain.Job
+	IsOutlier          IsOutlier
 }
 
 func (s *cronJobService) UpdateStatus(ctx context.Context, id int64, status int, scrName string) error {
@@ -98,7 +99,7 @@ func (s *cronJobService) Refresh(j domain.Job, scrLoad ...int64) error {
 		for _, l := range scrs {
 			loads = append(loads, l.SLoad)
 		}
-		if IsOutlier(scrLoad[0], loads) {
+		if s.IsOutlier.IsOutlier(scrLoad[0], loads) {
 			switch s.rb {
 			case RelaxReBalance:
 				return ErrSelfLoadTooHigh
@@ -150,6 +151,6 @@ func (p *cronJobService) SetDowngrade(ctx context.Context, scrName string, dg bo
 	return p.repo.SetDowngrade(ctx, scrName, dg)
 }
 
-func NewCronJobService(repo JobRepository, l logx.Logger, sg ReBalanceStrategy) JobService {
-	return &cronJobService{repo: repo, l: l, reBalanceFailedJob: make(chan domain.Job), rb: sg}
+func NewCronJobService(repo JobRepository, l logx.Logger, sg ReBalanceStrategy, IsOutlier IsOutlier) JobService {
+	return &cronJobService{repo: repo, l: l, reBalanceFailedJob: make(chan domain.Job), rb: sg, IsOutlier: IsOutlier}
 }

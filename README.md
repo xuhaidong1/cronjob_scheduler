@@ -67,9 +67,12 @@ cronjob_scheduler提供了任务的长持有和短持有策略；默认为短持
 当选择了负载均衡的调度方式，可以进一步选择重平衡策略，重平衡：当scr负载过高时，会触发重平衡，会释放一些job回到job池，按对释放job的管理可以分为以下两种策略：（默认为宽松策略）
 * 宽松策略：由于高负载释放掉一些job后，不考虑后继有没有人接手执行这些job，释放了就不管了；
 * 严苛策略：考虑后继是否有人接手该job，没有则不释放，有则跟进直到交接完成。如果指定的候选者在该job的一个调度周期内没有成功接手，老scr会夺回该job。
+对于负载过高的判断，默认为zscore算法，可以传入自己的实现，需要实现IsOutlier接口
 ```go
     //使用严苛的再均衡策略
     scr := cs.NewScheduler(db, cs.WithStrictReBalanceStrategy())
+    //传入自己的高负载判断逻辑
+    scr := cs.NewScheduler(db, cs.WithHighLoadJudgeStrategy(MyIsOutlier{}))
 ```
 
 ## 任务和scr续约配置

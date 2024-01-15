@@ -5,7 +5,14 @@ import (
 	"sort"
 )
 
-func IsOutlier(load int64, loads []int64) bool {
+type IsOutlier interface {
+	IsOutlier(load int64, loads []int64) bool
+}
+
+type DefaultIsOutlier struct {
+}
+
+func (d DefaultIsOutlier) IsOutlier(load int64, loads []int64) bool {
 	data := float64(load)
 	datas := make([]float64, len(loads))
 	for i := 0; i < len(loads); i++ {

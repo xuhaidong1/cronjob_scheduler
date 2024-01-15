@@ -38,6 +38,8 @@ type SchedulerConfig struct {
 	ReBalanceSg ReBalanceStrategy
 	//降级情况下，限制的负载总和最大值,未指定默认为0
 	Threshold int64
+	//判断负载过高的离群点的方法
+	IsOutlier internal.IsOutlier
 	Logger    logx.Logger
 }
 
@@ -60,7 +62,7 @@ func NewScheduler(db *gorm.DB, opts ...ScheduleOption) *Scheduler {
 	}
 	dao := internal.NewGORMJobDAO(db, sc.PreemptSg)
 	repo := internal.NewCronJobRepository(dao)
-	svc := internal.NewCronJobService(repo, sc.Logger, internal.ReBalanceStrategy(sc.ReBalanceSg))
+	svc := internal.NewCronJobService(repo, sc.Logger, internal.ReBalanceStrategy(sc.ReBalanceSg), sc.IsOutlier)
 	scr := newScheduler(svc, sc)
 	scr.RegisterExecutor(executor.NewLocalFuncExecutor())
 	scr.RegisterExecutor(executor.NewHttpExecutor())
@@ -112,6 +114,7 @@ var defaultSchedulerConfig = SchedulerConfig{
 		log, _ := logx.NewLogger(zap.InfoLevel).Build()
 		return logx.NewZapLogger(log)
 	}(),
+	IsOutlier: internal.DefaultIsOutlier{},
 }
 
 func WithRefreshInterval(interval time.Duration) ScheduleOption {
@@ -170,6 +173,16 @@ func WithStrictReBalanceStrategy() ScheduleOption {
 		F: func(c *SchedulerConfig) {
 			//访问c.DB的前提是c.DB是非空的
 			c.ReBalanceSg = StrictReBalanceStrategy
+		},
+	}
+}
+
+func WithHighLoadJudgeStrategy(io internal.IsOutlier) ScheduleOption {
+	return ScheduleOption{
+		Idx: 7,
+		F: func(c *SchedulerConfig) {
+			//访问c.DB的前提是c.DB是非空的
+			c.IsOutlier = io
 		},
 	}
 }
